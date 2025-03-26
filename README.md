@@ -31,11 +31,13 @@ This sophisticated integration of advanced AI technologies ensures that MindEase
    git clone https://github.com/yourusername/MindEase.git
    cd MindEase
 
- 2.**Install Dependencies:**
-    ```pip install -r requirements.txt
+2.**Install Dependencies:**
+    ```bash 
+    pip install -r requirements.txt
     
- 3.**Run Command:**
-   ```streamlit run Home.py
+3.**Run Command:**
+   ```bash
+   streamlit run Home.py
 
 ## License
 This project is licensed under the MIT License.
