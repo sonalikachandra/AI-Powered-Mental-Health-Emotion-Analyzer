@@ -32,7 +32,7 @@ This sophisticated integration of advanced AI technologies ensures that MindEase
    cd MindEase
 
 2.**Install Dependencies:**
-    ```bash 
+    ```bash
     pip install -r requirements.txt
     
 3.**Run Command:**
