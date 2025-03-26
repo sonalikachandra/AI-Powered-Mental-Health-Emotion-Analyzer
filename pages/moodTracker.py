@@ -9,18 +9,16 @@ from azure.ai.textanalytics import TextAnalyticsClient
 from azure.cognitiveservices.vision.face import FaceClient
 from azure.core.credentials import AzureKeyCredential
 from msrest.authentication import CognitiveServicesCredentials
-# from dotenv import load_dotenv
-
-# load_dotenv()
 
 # ------------------------- AZURE CONFIGURATION -------------------------
-# (Replace the hardcoded values with secure methods later)
 AZURE_TEXT_KEY = "Fj1KPt7grC6bAkNja7daZUstpP8wZTXsV6Zjr2FOxkO7wsBQ5SzQJQQJ99BCACHYHv6XJ3w3AAAAACOGL3Xg"
 AZURE_TEXT_ENDPOINT = "https://ai-aihackthonhub282549186415.cognitiveservices.azure.com/"
 
-# Speech credentials from environment variables (matching the tutorial snippet)
 AZURE_SPEECH_KEY = os.environ.get("SPEECH_KEY")
 AZURE_SPEECH_REGION = os.environ.get("SPEECH_REGION")
+
+# Debug prints
+print(f"SPEECH_KEY: {AZURE_SPEECH_KEY}, SPEECH_REGION: {AZURE_SPEECH_REGION}")
 
 FACE_ENDPOINT = "https://api.luxand.cloud/photo/emotions"
 FACE_API_TOKEN = "d818b857376246968518f98c0f3dcf1c"
@@ -30,17 +28,16 @@ AZURE_OPENAI_ENDPOINT = "https://ai-aihackthonhub282549186415.openai.azure.com/"
 AZURE_GPT4_DEPLOYMENT = "gpt-4"
 AZURE_GPT4_API_VERSION = "2025-01-01-preview"
 
-# ------------------------- AZURE CLIENTS -------------------------
+# ------------------------- TEXT & SPEECH CLIENT SETUP -------------------------
 try:
     text_client = TextAnalyticsClient(
         endpoint=AZURE_TEXT_ENDPOINT,
         credential=AzureKeyCredential(AZURE_TEXT_KEY)
     )
-    
 except Exception as e:
-    st.error(f"⚠ Error initializing Azure clients: {e}")
+    st.error(f"⚠ Error initializing Azure Text client: {e}")
 
-# ------------------------- OPENAI CLIENT SETUP -------------------------
+# OpenAI client setup
 openai.api_type = "azure"
 openai.api_key = AZURE_OPENAI_KEY
 openai.api_base = AZURE_OPENAI_ENDPOINT
@@ -53,7 +50,7 @@ st.write("Analyze emotional sentiment from text, voice, and images.")
 # Variables to store analysis results
 sentiment = "Unknown"
 speech_sentiment = "Unknown"
-detected_emotion = "Unknown"
+gpt4_emotion = ""  # Will hold the emotion derived from GPT‑4's response
 
 # ------------------------- TEXT SENTIMENT ANALYSIS -------------------------
 st.header("📄 Text Sentiment Analysis")
@@ -76,35 +73,23 @@ if st.button("Analyze Text"):
 # ------------------------- SPEECH SENTIMENT ANALYSIS -------------------------
 st.header("🎤 Speech Sentiment Analysis")
 
-# Dropdown for selecting language
 languages = ["en-US", "hi-IN", "fr-FR", "es-ES", "de-DE", "it-IT", "pt-PT", "zh-CN", "ja-JP", "ko-KR"]
 language_choice = st.selectbox("Select Language", languages)
 
 if st.button("Record & Analyze Speech"):
     try:
-        # 1. Initialize speech config with key and region
         speech_config = speechsdk.SpeechConfig(
             subscription=AZURE_SPEECH_KEY,
             region=AZURE_SPEECH_REGION
         )
-        
-        # Set selected language for speech recognition
         speech_config.speech_recognition_language = language_choice
 
-        # 2. Use the default microphone
         audio_config = speechsdk.audio.AudioConfig(use_default_microphone=True)
-
-        # 3. Create a SpeechRecognizer
-        speech_recognizer = speechsdk.SpeechRecognizer(
-            speech_config=speech_config,
-            audio_config=audio_config
-        )
+        speech_recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
 
         st.write("🎙 Recording... Please speak now.")
-        # 4. Recognize speech once
         speech_recognition_result = speech_recognizer.recognize_once_async().get()
 
-        # 5. Handle results
         if speech_recognition_result.reason == speechsdk.ResultReason.RecognizedSpeech:
             recognized_text = speech_recognition_result.text
             st.success(f"Recognized: {recognized_text}")
@@ -117,92 +102,156 @@ if st.button("Record & Analyze Speech"):
             else:
                 st.warning("Unable to analyze speech sentiment.")
         elif speech_recognition_result.reason == speechsdk.ResultReason.NoMatch:
-            st.warning(f"No speech could be recognized: {speech_recognition_result.no_match_details}")
+            st.warning(f"No speech recognized: {speech_recognition_result.no_match_details}")
         elif speech_recognition_result.reason == speechsdk.ResultReason.Canceled:
             cancellation_details = speech_recognition_result.cancellation_details
             st.error(f"Speech Recognition canceled: {cancellation_details.reason}")
             if cancellation_details.reason == speechsdk.CancellationReason.Error:
                 st.error(f"Error details: {cancellation_details.error_details}")
-                st.error("Did you set the speech resource key and region values?")
+                st.error("Check speech resource key & region values.")
     except Exception as e:
         st.error(f"⚠ Error in speech analysis: {e}")
 
-# ------------------------- IMAGE SENTIMENT ANALYSIS -------------------------
+# ------------------------- IMAGE EMOTION (VISION + GPT-4) -------------------------
+st.header("🔍 Image Emotion Analysis via GPT‑4")
 
-st.header("📸 Facial Emotion Detection")
-image_file = st.file_uploader("Upload an image (Face Analysis):", type=["jpg", "png", "jpeg"])
+AZURE_VISION_KEY = os.getenv("VISION_KEY")
+AZURE_VISION_ENDPOINT = os.getenv("VISION_ENDPOINT")
+
+if not AZURE_VISION_KEY or not AZURE_VISION_ENDPOINT:
+    st.error("🚨 Azure Vision API credentials are missing! Please set VISION_KEY and VISION_ENDPOINT.")
+    st.stop()
+
+AZURE_VISION_ENDPOINT = AZURE_VISION_ENDPOINT.rstrip("/")
+
+image_file = st.file_uploader("📤 Upload an image for analysis:", type=["jpg", "jpeg", "png"])
 
 if image_file is not None:
-        # Read image bytes from the uploader.
-        headers = {"token": FACE_API_TOKEN}
-        image_bytes = image_file.read()
-        image_stream = BytesIO(image_bytes)
-        files = {"photo": image_stream}
-        
-        try:
-            response = requests.post(FACE_ENDPOINT, headers=headers, files=files)
-            result = json.loads(response.text)
+    # Display the uploaded image
+    image_bytes = image_file.read()
+    st.image(image_file, caption="📷 Uploaded Image", use_container_width=True)
 
-            # st.write("API Response:")
-            # st.json(result)
-            
-            if response.status_code == 200 and "faces" in result and len(result["faces"]) > 0:
-                # Process the first detected face.
-                emotions = result["faces"][0]["emotion"]
-        
-                # Display the emotions in Streamlit
-                st.subheader("🎭 Detected Emotions:")
-                for emotion, score in emotions.items():
-                    st.write(f"{emotion.capitalize()}:** {score:.3f}")
+    # 1. Vision API (v3.2/analyze) to get a description
+    vision_api_url = f"{AZURE_VISION_ENDPOINT}/vision/v3.2/analyze"
+    vision_params = {
+        "visualFeatures": "Faces,Description",
+        "language": "en"
+    }
+    vision_headers = {
+        "Ocp-Apim-Subscription-Key": AZURE_VISION_KEY,
+        "Content-Type": "application/octet-stream"
+    }
 
-                # # Highlight the dominant emotion
-                dominant_emotion = result["faces"][0]["dominant_emotion"]
-                st.success(f"Dominant Emotion: {dominant_emotion.capitalize()} ({emotions[dominant_emotion]:.3f})")
+    try:
+        vision_response = requests.post(vision_api_url, headers=vision_headers, params=vision_params, data=image_bytes)
+        vision_response.raise_for_status()
+        vision_result = vision_response.json()
+
+        st.subheader("📜 Vision API JSON Response:")
+        st.json(vision_result)
+
+        # Extract description from Vision API
+        description_text = ""
+        if ("description" in vision_result 
+            and "captions" in vision_result["description"] 
+            and len(vision_result["description"]["captions"]) > 0):
+            description_text = vision_result["description"]["captions"][0]["text"]
+        
+        if not description_text:
+            description_text = "No description available."
+        st.write("Extracted Description:", description_text)
+
+        # 2. GPT-4 for emotion analysis
+        gpt4_url = (
+            f"{AZURE_OPENAI_ENDPOINT}/openai/deployments/{AZURE_GPT4_DEPLOYMENT}/chat/completions"
+            f"?api-version={AZURE_GPT4_API_VERSION}"
+        )
+        gpt_headers = {
+            "Content-Type": "application/json",
+            "api-key": AZURE_OPENAI_KEY
+        }
+        prompt = (
+            f"Analyze this image description and provide the main emotion in one word: {description_text}"
+        )
+        gpt_data = {
+            "messages": [
+                {"role": "system", "content": "You are an expert in analyzing emotions in images."},
+                {"role": "user", "content": prompt}
+            ]
+        }
+
+        gpt_response = requests.post(gpt4_url, headers=gpt_headers, json=gpt_data)
+        gpt_response.raise_for_status()
+        gpt_result = gpt_response.json()
+
+        st.subheader("💬 GPT‑4 Emotion Analysis:")
+        if "choices" in gpt_result and len(gpt_result["choices"]) > 0:
+            gpt4_text = gpt_result["choices"][0]["message"]["content"]
+            st.write("GPT‑4 Raw Answer:", gpt4_text)
+
+            # A simple approach to parse the single-word emotion from GPT-4's text
+            gpt4_text_lower = gpt4_text.lower()
+
+            # Basic keyword matching (improve as needed)
+            if any(word in gpt4_text_lower for word in ["happy", "happiness", "joy"]):
+                gpt4_emotion = "happiness"
+            elif any(word in gpt4_text_lower for word in ["sad", "sadness", "sorrow", "depressed"]):
+                gpt4_emotion = "sadness"
+            elif any(word in gpt4_text_lower for word in ["anger", "angry"]):
+                gpt4_emotion = "anger"
+            elif any(word in gpt4_text_lower for word in ["fear", "afraid", "scared"]):
+                gpt4_emotion = "fear"
             else:
-                st.warning("⚠ No face detected. Please try another image.")
-        except Exception as e:
-            st.error(f"⚠ Error in face analysis: {e}")
-# ------------------------- ADDITIONAL FEATURE: MOOD-BASED ARTICLE RECOMMENDATIONS -------------------------
-# ------------------------- ADDITIONAL FEATURE: MOOD-BASED ARTICLE RECOMMENDATIONS -------------------------
+                gpt4_emotion = "neutral"
+
+            st.success(f"Parsed Emotion: {gpt4_emotion.capitalize()}")
+        else:
+            st.error("No valid answer from GPT‑4.")
+            gpt4_emotion = "neutral"
+    except requests.exceptions.RequestException as e:
+        st.error(f"🚨 API Request Failed: {e}")
+        gpt4_emotion = "neutral"
+else:
+    # If no image uploaded, default
+    gpt4_emotion = "neutral"
+
+# ------------------------- MOOD-BASED ARTICLE RECOMMENDATIONS -------------------------
 st.header("📚 Recommended Articles & Resources")
 
-# Revised mood determination logic:
-# Convert inputs to lower-case strings for comparison.
-text_sent = sentiment.lower() if sentiment else ""
-speech_sent = speech_sentiment.lower() if speech_sentiment else ""
-face_emotion = detected_emotion.lower() if detected_emotion else ""
+# Convert inputs to lower-case strings for comparison
+text_sent_lower = sentiment.lower() if sentiment else ""
+speech_sent_lower = speech_sentiment.lower() if speech_sentiment else ""
+face_emotion_lower = gpt4_emotion.lower() if gpt4_emotion else ""
 
-if ("negative" in [text_sent, speech_sent]) or (face_emotion in ["anger", "sadness", "fear", "disgust"]):
+if ("negative" in [text_sent_lower, speech_sent_lower]) or (face_emotion_lower in ["anger", "sadness", "fear", "disgust"]):
     mood_category = "negative"
-elif ("positive" in [text_sent, speech_sent]) or (face_emotion == "happiness"):
+elif ("positive" in [text_sent_lower, speech_sent_lower]) or (face_emotion_lower == "happiness"):
     mood_category = "positive"
 else:
     mood_category = "neutral"
 
-# Define sample article recommendations for each mood category.
 recommendations = {
     "negative": [
         {"title": "10 Effective Ways to Reduce Stress", "url": "https://www.drkapilsharma.in/blog/10-simple-ways-to-relieve-stress-and-anxiety/"},
         {"title": "Meditation Techniques for Anxiety", "url": "https://www.verywellmind.com/anti-anxiety-medications-2330663"},
-        {"title": "How to Manage Negative Thoughts", "url": "https://r.search.yahoo.com/_ylt=AwrKEkbyNuNn8wEA9S67HAx.;_ylu=Y29sbwNzZzMEcG9zAzIEdnRpZAMEc2VjA3Ny/RV=2/RE=1744153587/RO=10/RU=https%3a%2f%2fpositivepsychology.com%2fthought-stopping-techniques%2f/RK=2/RS=sNz1irKXxWLzEqoo4GuE3qqvJCs-"},
-        {"title": "Coping Strategies for Depression", "url": "https://r.search.yahoo.com/_ylt=Awrx.uLRNuNnxQIApRO7HAx.;_ylu=Y29sbwNzZzMEcG9zAzIEdnRpZAMEc2VjA3Ny/RV=2/RE=1744153553/RO=10/RU=https%3a%2f%2fwww.verywellhealth.com%2fcoping-skills-for-depression-8426424/RK=2/RS=WSJfBkJ_xT8GoGq1IATpGQs_cGk-"},
-        {"title": "Mindfulness for Stress Reduction", "url": "https://r.search.yahoo.com/_ylt=AwrPpQNgNeNnBQIAn2W7HAx.;_ylu=Y29sbwNzZzMEcG9zAzEEdnRpZAMEc2VjA3Ny/RV=2/RE=1744153185/RO=10/RU=https%3a%2f%2fpositivepsychology.com%2fmindfulness-based-stress-reduction-mbsr%2f/RK=2/RS=6uHREauKcmRsBnRg5qk4oiW_nNI-"}
+        {"title": "How to Manage Negative Thoughts", "url": "https://positivepsychology.com/thought-stopping-techniques/"},
+        {"title": "Coping Strategies for Depression", "url": "https://www.verywellhealth.com/coping-skills-for-depression-8426424"},
+        {"title": "Mindfulness for Stress Reduction", "url": "https://positivepsychology.com/mindfulness-based-stress-reduction-mbsr/"}
     ],
     "neutral": [
-        {"title": "Daily Habits for Maintaining a Balanced Life", "url": "https://r.search.yahoo.com/_ylt=Awrx.uKNNeNntQIAH6S7HAx.;_ylu=Y29sbwNzZzMEcG9zAzEEdnRpZAMEc2VjA3Ny/RV=2/RE=1744153229/RO=10/RU=https%3a%2f%2fcuriousmindmagazine.com%2f10-healthy-habits-for-a-balanced-lifestyle%2f/RK=2/RS=7oFXNDh4HDOT1CvYJVLzRLbfejc-"},
-        {"title": "Mindfulness: The Key to Everyday Calm", "url": "https://r.search.yahoo.com/_ylt=Awr1SbSkNeNnCAIAmBO7HAx.;_ylu=Y29sbwNzZzMEcG9zAzEEdnRpZAMEc2VjA3Ny/RV=2/RE=1744153252/RO=10/RU=https%3a%2f%2fspiritualityshepherd.com%2fthe-art-of-mindfulness-6-strategies-for-everyday-calm%2f/RK=2/RS=6UE6dfxXxoeFUF4n.Fn.AmriZB4-"},
-        {"title": "Simple Self-Care Tips for a Healthy Mind", "url": "https://r.search.yahoo.com/_ylt=AwrKA27DNeNnqQIAeL.7HAx.;_ylu=Y29sbwNzZzMEcG9zAzIEdnRpZAMEc2VjA3Ny/RV=2/RE=1744153283/RO=10/RU=https%3a%2f%2fmind.help%2farticles%2fself-care-habits%2f/RK=2/RS=T2J2JvFKqLW1gJiSqQDqPwlZgac-"},
-        {"title": "Improving Your Mental Well-being", "url": "https://r.search.yahoo.com/_ylt=Awr1Rf3dNeNnUQIA9wO7HAx.;_ylu=Y29sbwNzZzMEcG9zAzEEdnRpZAMEc2VjA3Ny/RV=2/RE=1744153309/RO=10/RU=https%3a%2f%2fwww.nhs.uk%2fevery-mind-matters%2fmental-wellbeing-tips%2ftop-tips-to-improve-your-mental-wellbeing%2f/RK=2/RS=X3nE0WD_UvjB1WeGi01AKfjVoNU-"}
+        {"title": "Daily Habits for Maintaining a Balanced Life", "url": "https://curiousmindmagazine.com/10-healthy-habits-for-a-balanced-lifestyle/"},
+        {"title": "Mindfulness: The Key to Everyday Calm", "url": "https://spiritualityshepherd.com/the-art-of-mindfulness-6-strategies-for-everyday-calm/"},
+        {"title": "Simple Self-Care Tips for a Healthy Mind", "url": "https://mind.help/articles/self-care-habits/"},
+        {"title": "Improving Your Mental Well-being", "url": "https://www.nhs.uk/every-mind-matters/mental-wellbeing-tips/top-tips-to-improve-your-mental-wellbeing/"}
     ],
     "positive": [
-        {"title": "How to Sustain a Positive Mindset", "url": "https://r.search.yahoo.com/_ylt=AwrKB5cJNuNnIAIAd0K7HAx.;_ylu=Y29sbwNzZzMEcG9zAzEEdnRpZAMEc2VjA3Ny/RV=2/RE=1744153354/RO=10/RU=https%3a%2f%2fwww.psychologytoday.com%2fus%2fblog%2fclick-here-for-happiness%2f202105%2f9-ways-to-cultivate-a-positive-mindset/RK=2/RS=YE2h5zlA182BuOoT7wbYyIXafl8-"},
-        {"title": "Embrace Happiness: Tips for a Fulfilling Life", "url": "https://r.search.yahoo.com/_ylt=Awrx.uIqNuNn2QIAuN67HAx.;_ylu=Y29sbwNzZzMEcG9zAzEEdnRpZAMEc2VjA3Ny/RV=2/RE=1744153386/RO=10/RU=https%3a%2f%2fmanibelde.medium.com%2fembracing-happiness-7-simple-tips-to-create-a-life-full-of-joy-and-contentment-9ae66d7f1341/RK=2/RS=MgKI9UWSv.B0zeWbeeIcHnuM9fI-"},
-        {"title": "Boost Your Mood with These Healthy Habits", "url": "https://r.search.yahoo.com/_ylt=AwrPqmxKNuNneAIAX0a7HAx.;_ylu=Y29sbwNzZzMEcG9zAzEEdnRpZAMEc2VjA3Ny/RV=2/RE=1744153419/RO=10/RU=https%3a%2f%2fwww.powerofpositivity.com%2fpsychologists-advice-10-activities-to-boost-mood-10-mins-or-less%2f/RK=2/RS=.6qCJVicPynxTJkoImKlS_dlbKg-"},
-        {"title": "The Benefits of Gratitude for a Happy Life", "url": "https://r.search.yahoo.com/_ylt=AwrKDrZsNuNnIwIAHye7HAx.;_ylu=Y29sbwNzZzMEcG9zAzEEdnRpZAMEc2VjA3Nj/RV=2/RE=1744153452/RO=10/RU=https%3a%2f%2fwww.happierhuman.com%2fbenefits-of-gratitude%2f%23%3a~%3atext%3dGratitude%2520is%2520a%2520powerful%2520emotion%2520that%2520can%2520bring%2cgreater%2520mental%2520well-being%252C%2520higher%2520self-esteem%252C%2520and%2520life%2520satisfaction./RK=2/RS=I2cyo5iQfOYAt9_GxuRqekLTTZE-"}
+        {"title": "How to Sustain a Positive Mindset", "url": "https://www.psychologytoday.com/us/blog/click-here-for-happiness/202105/9-ways-to-cultivate-a-positive-mindset"},
+        {"title": "Embrace Happiness: Tips for a Fulfilling Life", "url": "https://manibelde.medium.com/embracing-happiness-7-simple-tips-to-create-a-life-full-of-joy-and-contentment-9ae66d7f1341"},
+        {"title": "Boost Your Mood with These Healthy Habits", "url": "https://www.powerofpositivity.com/psychologists-advice-10-activities-to-boost-mood-10-mins-or-less/"},
+        {"title": "The Benefits of Gratitude for a Happy Life", "url": "https://www.happierhuman.com/benefits-of-gratitude/#:~:text=Gratitude%20is%20a%20powerful%20emotion%20that%20can%20bring"}
     ]
 }
 
-# Get recommendations based on the mood category
 recos = recommendations.get(mood_category, recommendations["neutral"])
 
 st.write(f"Based on your overall mood ({mood_category.capitalize()}), here are some article recommendations:")

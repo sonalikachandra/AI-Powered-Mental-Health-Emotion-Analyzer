@@ -79,7 +79,6 @@ st.markdown(
             font-weight: 500;
             text-decoration: none;
             transition: background 0.3s ease-in-out;
-            display: inline-block;
         }
 
         .option-button:hover {
@@ -112,13 +111,13 @@ st.markdown('<p class="subtitle">🌼 A positive mind leads to a positive life.<
 # Quote Box
 st.markdown('<div class="quote-box">“Happiness depends upon ourselves.” – Aristotle</div>', unsafe_allow_html=True)
 
-# Navigation Buttons
-col1, col2 = st.columns(2)
-
-with col1:
-    if st.button("🧠 Mood Tracker"):
-        st.switch_page("pages/moodTracker.py")
-
-with col2:
-    if st.button("💬 AI Medical Chatbot"):
-        st.switch_page("pages/chatbot.py")
+# Options
+st.markdown(
+    """
+    <div class="options-box">
+        <a href="pages/moodTracker.py" class="option-button">🧠 Mood Tracker</a>
+        <a href="pages/chatbot.py" class="option-button">💬 AI Medical Chatbot</a>
+    </div>
+    """,
+    unsafe_allow_html=True
+)

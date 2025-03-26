@@ -17,7 +17,7 @@ openai.api_version = "2024-02-15-preview"  # Check the correct version in Azure
 st.set_page_config(page_title="🩺 AI Medical Assistant", layout="wide")
 
 st.title("🩺 AI Medical Assistant Chatbot")
-st.write("💬 Ask about *symptoms, medications, first-aid, or medical advice*.")
+st.write("💬 Ask about symptoms, medications, first-aid, or medical advice.")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
