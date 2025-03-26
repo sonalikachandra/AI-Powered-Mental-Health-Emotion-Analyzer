@@ -13,6 +13,16 @@ MindEase is designed to provide accessible mental health support using AI. It he
 - **Multilingual Support:** Accommodates various languages in both text and speech analysis, making the tool accessible to a diverse audience.
 - **Mood-Based Article Recommendations:** Suggests relevant articles and resources based on the user's current emotional state.
 
+## Advanced AI & Azure Integration
+
+MindEase leverages cutting-edge Microsoft Azure Cognitive Services and Azure OpenAI to deliver robust, multimodal emotion analysis. Our solution integrates:
+
+- **Azure Cognitive Services:** Utilizing Azure Text Analytics, Speech SDK, and Face API, our system employs state-of-the-art transformer-based models and deep learning for real-time sentiment and emotion analysis from text, voice, and images.
+- **Azure OpenAI (GPT-4):** Powers an intelligent conversational AI, enabling adaptive, personalized mental health guidance through advanced natural language understanding.
+- **Scalable Cloud Infrastructure:** Built on Microsoft Azure, our platform harnesses distributed computing for high-performance processing, predictive analytics, and proactive mental health interventions.
+
+This sophisticated integration of advanced AI technologies ensures that MindEase provides intelligent, adaptive, and scalable mental health support.
+
 ## Installation
 
 1. **Clone the Repository:**
@@ -22,9 +32,10 @@ MindEase is designed to provide accessible mental health support using AI. It he
    cd MindEase
 
  2.**Install Dependencies:**
-    pip install -r requirements.txt
-
-   streamlit run Home.py
+    ```pip install -r requirements.txt
+    
+ 3.**Run Command:**
+   ```streamlit run Home.py
 
 ## License
 This project is licensed under the MIT License.
